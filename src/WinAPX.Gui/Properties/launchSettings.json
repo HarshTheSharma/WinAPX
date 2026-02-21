@@ -1,0 +1,10 @@
+{
+  "profiles": {
+    "WinAPX.Gui (Package)": {
+      "commandName": "MsixPackage"
+    },
+    "WinAPX.Gui (Unpackaged)": {
+      "commandName": "Project"
+    }
+  }
+}

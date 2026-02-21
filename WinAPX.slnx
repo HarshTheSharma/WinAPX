@@ -1,0 +1,10 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/WinAPX.Cli/WinAPX.Cli.csproj" />
+    <Project Path="src/WinAPX.Core/WinAPX.Core.csproj" />
+    <Project Path="src/WinAPX.Gui/WinAPX.Gui.csproj" Id="4d2d331d-7e9d-4680-b121-c829a53a8208">
+      <Platform Project="x64" />
+      <Deploy />
+    </Project>
+  </Folder>
+</Solution>
