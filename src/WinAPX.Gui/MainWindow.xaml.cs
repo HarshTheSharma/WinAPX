@@ -1,8 +1,13 @@
 using Microsoft.UI.Xaml;
+using System;
 using System.Collections.ObjectModel;
+using System.Runtime.InteropServices.WindowsRuntime;
 using System.Threading;
 using WinAPX.Core;
 using WinAPX.Core.Commands;
+using Windows.Foundation;
+using Windows.Storage.Pickers;
+using WinRT.Interop;
 
 namespace WinAPX.Gui;
 
@@ -39,8 +44,20 @@ public sealed partial class MainWindow : Window
             return;
         }
 
-        // simplified CreateCommand: CreateCommand(string envName)
-        var command = new CreateCommand(envName);
+        // Folder picker is ONLY shown for Create (to avoid UI confusion).
+        var picker = new FolderPicker();
+        picker.FileTypeFilter.Add("*");
+        InitializeWithWindow.Initialize(picker, WindowNative.GetWindowHandle(this));
+
+        var folder = await picker.PickSingleFolderAsync().AsTask();
+        if (folder is null)
+        {
+            LogError("Create cancelled.");
+            return;
+        }
+
+        // installLocation determines where the distro filesystem (ext4.vhdx) lives.
+        var command = new CreateCommand(envName, folder.Path);
         var result = await dispatcher.RunAsync(command, Log, cancellationTokenSource.Token);
 
         if (!result.Ok)

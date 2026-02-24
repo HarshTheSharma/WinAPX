@@ -36,18 +36,19 @@ public sealed class ProcessRunner
 
         async Task PumpAsync(StreamReader reader, Action<string> sink)
         {
-            while (!reader.EndOfStream && !cancellationToken.IsCancellationRequested)
+            while (!cancellationToken.IsCancellationRequested)
             {
-                var line = await reader.ReadLineAsync();
-                if (line is not null) sink(line);
+                var line = await reader.ReadLineAsync().ConfigureAwait(false);
+                if (line is null) break;
+                sink(line);
             }
         }
 
         var pumpOutTask = PumpAsync(process.StandardOutput, onStdout);
         var pumpErrTask = PumpAsync(process.StandardError, onStderr);
 
-        await Task.WhenAll(pumpOutTask, pumpErrTask);
-        await process.WaitForExitAsync(cancellationToken);
+        await process.WaitForExitAsync(cancellationToken).ConfigureAwait(false);
+        await Task.WhenAll(pumpOutTask, pumpErrTask).ConfigureAwait(false);
 
         return process.ExitCode;
     }

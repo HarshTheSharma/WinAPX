@@ -3,7 +3,7 @@ using WinAPX.Core.Commands;
 
 static void PrintUsage()
 {
-    Console.WriteLine("winapx create <name> [--homeDir <windowsPath>]");
+    Console.WriteLine("winapx create <name> [--installDir <windowsPath>] [--homeDir <windowsPath>]");
     Console.WriteLine("winapx enter <name>");
 }
 
@@ -30,21 +30,30 @@ switch (args[0].ToLowerInvariant())
         }
 
         var name = args[1];
-        string? homeDir = null;
+        string? installDir = null;
 
         for (var i = 2; i < args.Length; i++)
         {
-            if (string.Equals(args[i], "--homedir", StringComparison.OrdinalIgnoreCase) ||
-                string.Equals(args[i], "--homeDir", StringComparison.OrdinalIgnoreCase))
+            if (string.Equals(args[i], "--installdir", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(args[i], "--installDir", StringComparison.OrdinalIgnoreCase))
             {
                 if (i + 1 < args.Length)
                 {
-                    homeDir = args[++i];
+                    installDir = args[++i];
+                }
+            }
+            // Back-compat: treat --homeDir as install location
+            else if (string.Equals(args[i], "--homedir", StringComparison.OrdinalIgnoreCase) ||
+                     string.Equals(args[i], "--homeDir", StringComparison.OrdinalIgnoreCase))
+            {
+                if (i + 1 < args.Length)
+                {
+                    installDir = args[++i];
                 }
             }
         }
 
-        var command = new CreateCommand(name, homeDir);
+        var command = new CreateCommand(name, installDir);
         result = await dispatcher.RunAsync(command, e => Console.WriteLine($"[{e.At:HH:mm:ss}] {e.Message}"), cancellationToken);
         break;
     }

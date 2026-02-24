@@ -24,6 +24,10 @@
     <Content Include="Assets\Wide310x150Logo.scale-200.png" />
   </ItemGroup>
 
+<ItemGroup>
+  <PackageReference Include="Microsoft.Windows.CsWinRT" Version="2.1.5" />
+</ItemGroup>
+
   <ItemGroup>
     <Manifest Include="$(ApplicationManifest)" />
   </ItemGroup>
