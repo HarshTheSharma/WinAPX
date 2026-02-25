@@ -5,6 +5,7 @@ static void PrintUsage()
 {
     Console.WriteLine("winapx create <name> [--installDir <windowsPath>] [--homeDir <windowsPath>]");
     Console.WriteLine("winapx enter <name>");
+    Console.WriteLine("winapx delete <name> [--keepFiles]");
 }
 
 if (args.Length == 0)
@@ -67,6 +68,26 @@ switch (args[0].ToLowerInvariant())
         }
 
         var command = new EnterCommand(args[1]);
+        result = await dispatcher.RunAsync(command, e => Console.WriteLine($"[{e.At:HH:mm:ss}] {e.Message}"), cancellationToken);
+        break;
+    }
+
+    case "delete":
+    {
+        if (args.Length < 2)
+        {
+            PrintUsage();
+            return;
+        }
+
+        var keepFiles = false;
+        for (var i = 2; i < args.Length; i++)
+        {
+            if (string.Equals(args[i], "--keepFiles", StringComparison.OrdinalIgnoreCase))
+                keepFiles = true;
+        }
+
+        var command = new DeleteCommand(args[1], keepFiles);
         result = await dispatcher.RunAsync(command, e => Console.WriteLine($"[{e.At:HH:mm:ss}] {e.Message}"), cancellationToken);
         break;
     }
