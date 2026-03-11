@@ -122,37 +122,38 @@ public sealed class WslBackend
 
     public async Task EnsureUbuntuBaseTarAsync(string ubuntuBaseTarPath, Action<string> log, CancellationToken cancellationToken)
     {
-        if (File.Exists(ubuntuBaseTarPath))
+        await EnsureBaseTarAsync(DistroSpec.Ubuntu, ubuntuBaseTarPath, log, cancellationToken);
+    }
+
+    public async Task EnsureBaseTarAsync(DistroSpec distro, string tarPath, Action<string> log, CancellationToken cancellationToken)
+    {
+        if (File.Exists(tarPath))
         {
-            log($"Base Ubuntu tar already exists: {ubuntuBaseTarPath}");
+            log($"Base tar already exists: {tarPath}");
             return;
         }
 
-        await EnsureUbuntuInstalledAsync(log, cancellationToken);
+        Directory.CreateDirectory(Path.GetDirectoryName(tarPath)!);
 
-        Directory.CreateDirectory(Path.GetDirectoryName(ubuntuBaseTarPath)!);
+        var sourceDistro = distro.SourceWslDistro;
 
-        // Need to remove this hardcode later
-        var ubuntuDistroName = "Ubuntu";
-
-        var ubuntuExists = await DistroExistsAsync(ubuntuDistroName, cancellationToken);
-        if (!ubuntuExists)
+        var exists = await DistroExistsAsync(sourceDistro, cancellationToken);
+        if (!exists)
         {
-            // WSL is failing to run correctly from the app.
             throw new InvalidOperationException(
-                "Ubuntu was not detected by the app. WSL may be failing to run from the app process.");
+                $"Source distro '{sourceDistro}' was not detected. Make sure it is installed in WSL.");
         }
 
-        log($"Exporting '{ubuntuDistroName}' to base tar: {ubuntuBaseTarPath}");
+        log($"Exporting '{sourceDistro}' to base tar: {tarPath}");
 
         var (exitCode, _, err) = await RunCaptureAsync(
-            new[] { "--export", ubuntuDistroName, ubuntuBaseTarPath },
+            new[] { "--export", sourceDistro, tarPath },
             cancellationToken);
 
         if (exitCode != 0)
         {
             var combinedErr = string.Join("\n", err);
-            throw new InvalidOperationException("Failed to export Ubuntu base tar:\n" + combinedErr);
+            throw new InvalidOperationException($"Failed to export '{sourceDistro}' base tar:\n" + combinedErr);
         }
     }
 

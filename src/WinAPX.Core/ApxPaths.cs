@@ -15,5 +15,10 @@ public static class ApxPaths
     }
 
     public static string UbuntuBaseTarPath => Path.Combine(Base, "ubuntu-base.tar");
+    public static string BaseTarPath(string distroId) => Path.Combine(Base, $"{distroId}-base.tar");
     public static string InstanceDir(string envName) => Path.Combine(Instances, envName);
+
+    public static string Meta => Path.Combine(Root, "meta");
+    public static string MetaDir(string envName) => Path.Combine(Meta, envName);
+    public static string DefaultDirFile(string envName) => Path.Combine(MetaDir(envName), "default-dir.txt");
 }

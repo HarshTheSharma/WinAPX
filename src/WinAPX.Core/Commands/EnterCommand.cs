@@ -11,13 +11,13 @@ public sealed class EnterCommand : ICommand
     public string Name => "enter";
     private readonly string envName;
     private readonly string? startWindowsPath;
+    private readonly bool newWindow;
 
-    private const string DefaultLinuxWkdir = "/wkdir";
-
-    public EnterCommand(string envName, string? startWindowsPath = null)
+    public EnterCommand(string envName, string? startWindowsPath = null, bool newWindow = false)
     {
         this.envName = PathUtils.CleanName(envName);
         this.startWindowsPath = string.IsNullOrWhiteSpace(startWindowsPath) ? null : startWindowsPath;
+        this.newWindow = newWindow;
     }
 
     public async Task<CommandResult> ExecuteAsync(ICommandContext context, CancellationToken cancellationToken)
@@ -30,51 +30,64 @@ public sealed class EnterCommand : ICommand
             if (!await context.WslBackend.DistroExistsAsync(envName, cancellationToken))
                 return new CommandResult { Ok = false, Error = $"error: WSL distro '{envName}' not found" };
 
-            // Use WSL's --cd to start in the directory.
-            var cdPath = startWindowsPath is null
-                ? DefaultLinuxWkdir
-                : PathUtils.WinPathToWslPath(startWindowsPath);
-
-            context.Emit($"Launching shell for '{envName}'...");
-
-            var wtPath = FindOnPath("wt.exe");
-            if (wtPath is not null)
+            // use the starting directory
+            string cdPath;
+            if (startWindowsPath is not null)
             {
-                // wt.exe -- wsl.exe -d <env> --cd <path>
-                var psi = new ProcessStartInfo
-                {
-                    FileName = wtPath,
-                    UseShellExecute = true
-                };
-
-                psi.ArgumentList.Add("--");
-                psi.ArgumentList.Add(context.WslBackend.ExePath);
-                psi.ArgumentList.Add("-d");
-                psi.ArgumentList.Add(envName);
-                psi.ArgumentList.Add("--cd");
-                psi.ArgumentList.Add(cdPath);
-
-                Process.Start(psi);
+                cdPath = PathUtils.WinPathToWslPath(startWindowsPath);
             }
             else
             {
-                // Fallback: cmd /c start "" wsl.exe -d <env> --cd <path>
-                var psi = new ProcessStartInfo
+                var defaultDirFile = ApxPaths.DefaultDirFile(envName);
+                if (File.Exists(defaultDirFile))
                 {
-                    FileName = "cmd.exe",
-                    UseShellExecute = true
-                };
+                    var stored = (await File.ReadAllTextAsync(defaultDirFile, cancellationToken)).Trim();
+                    cdPath = stored.Length > 0 ? PathUtils.WinPathToWslPath(stored) : "~";
+                }
+                else
+                {
+                    cdPath = "~";
+                }
+            }
 
-                psi.ArgumentList.Add("/c");
-                psi.ArgumentList.Add("start");
-                psi.ArgumentList.Add("");
-                psi.ArgumentList.Add(context.WslBackend.ExePath);
+            if (newWindow)
+            {
+                context.Emit($"Launching shell for '{envName}' in new window...");
+
+                var wtPath = FindOnPath("wt.exe");
+                if (wtPath is not null)
+                {
+                    var psi = new ProcessStartInfo { FileName = wtPath, UseShellExecute = true };
+                    psi.ArgumentList.Add("new-tab");
+                    psi.ArgumentList.Add(context.WslBackend.ExePath);
+                    psi.ArgumentList.Add("-d");
+                    psi.ArgumentList.Add(envName);
+                    psi.ArgumentList.Add("--cd"); psi.ArgumentList.Add(cdPath);
+                    Process.Start(psi);
+                }
+                else
+                {
+                    var psi = new ProcessStartInfo { FileName = "cmd.exe", UseShellExecute = true };
+                    psi.ArgumentList.Add("/c");
+                    psi.ArgumentList.Add("start");
+                    psi.ArgumentList.Add("");
+                    psi.ArgumentList.Add(context.WslBackend.ExePath);
+                    psi.ArgumentList.Add("-d");
+                    psi.ArgumentList.Add(envName);
+                    psi.ArgumentList.Add("--cd"); psi.ArgumentList.Add(cdPath);
+                    Process.Start(psi);
+                }
+            }
+            else
+            {
+                // Run inline in the current terminal
+                var psi = new ProcessStartInfo { FileName = context.WslBackend.ExePath, UseShellExecute = false };
                 psi.ArgumentList.Add("-d");
                 psi.ArgumentList.Add(envName);
-                psi.ArgumentList.Add("--cd");
-                psi.ArgumentList.Add(cdPath);
+                psi.ArgumentList.Add("--cd"); psi.ArgumentList.Add(cdPath);
 
-                Process.Start(psi);
+                var proc = Process.Start(psi)!;
+                await proc.WaitForExitAsync(cancellationToken);
             }
 
             return new CommandResult { Ok = true };

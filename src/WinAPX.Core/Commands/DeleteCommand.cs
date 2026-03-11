@@ -28,7 +28,7 @@ public sealed class DeleteCommand : ICommand
             if (!await context.WslBackend.DistroExistsAsync(envName, cancellationToken))
                 return new CommandResult { Ok = false, Error = $"error: WSL distro '{envName}' not found" };
 
-            // Capture where WSL stores ext4.vhdx (works even if create used a user-picked folder).
+            // get where WSL stores virtual hard disk
             var basePath = TryGetWslBasePath(envName);
 
             context.Emit($"Terminating '{envName}'...");
@@ -54,7 +54,6 @@ public sealed class DeleteCommand : ICommand
                 return new CommandResult { Ok = true };
             }
 
-            // Prefer WSL's BasePath; fallback to WinAPX default instance dir.
             var deletePath = !string.IsNullOrWhiteSpace(basePath)
                 ? basePath
                 : ApxPaths.InstanceDir(envName);
@@ -68,6 +67,11 @@ public sealed class DeleteCommand : ICommand
             {
                 context.Emit($"Files already missing: {deletePath}");
             }
+
+            // Clean up metadata
+            var metaDir = ApxPaths.MetaDir(envName);
+            if (Directory.Exists(metaDir))
+                Directory.Delete(metaDir, recursive: true);
 
             context.Emit("Done.");
             return new CommandResult { Ok = true };

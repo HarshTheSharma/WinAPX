@@ -1,7 +1,9 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Controls.Primitives;
 using System;
 using System.Collections.ObjectModel;
+using System.IO;
 using System.Runtime.InteropServices.WindowsRuntime;
 using System.Threading;
 using System.Threading.Tasks;
@@ -16,64 +18,82 @@ public sealed partial class MainWindow : Window
 {
     private readonly CommandDispatcher dispatcher = new();
     private CancellationTokenSource? cancellationTokenSource;
+    private bool _updatingMode;
 
     public ObservableCollection<string> logLines { get; } = new();
 
     public MainWindow()
     {
         InitializeComponent();
-        Mode_Checked(this, new RoutedEventArgs());
+
+        var iconPath = Path.Combine(AppContext.BaseDirectory, "Assets", "icon.ico");
+        if (File.Exists(iconPath))
+            AppWindow.SetIcon(iconPath);
+
+        UpdateMode();
     }
 
-    private void Log(CommandEvent commandEvent)
-        => DispatcherQueue.TryEnqueue(() => logLines.Add($"[{commandEvent.At:HH:mm:ss}] {commandEvent.Message}"));
+    private void Log(CommandEvent e)
+        => DispatcherQueue.TryEnqueue(() => logLines.Add($"[{e.At:HH:mm:ss}] {e.Message}"));
 
     private void LogError(string message)
         => DispatcherQueue.TryEnqueue(() => logLines.Add($"[ERROR] {message}"));
 
-    private void SetButtonsEnabled(bool enabled)
+    private void SetBusy(bool busy)
     {
-        modeEnterRadio?.SetValue(Control.IsEnabledProperty, enabled);
-        modeCreateRadio?.SetValue(Control.IsEnabledProperty, enabled);
-        modeDeleteRadio?.SetValue(Control.IsEnabledProperty, enabled);
-
-        runButton?.SetValue(Control.IsEnabledProperty, enabled);
-        listButton?.SetValue(Control.IsEnabledProperty, enabled);
-
-        useCustomPathCheckBox?.SetValue(Control.IsEnabledProperty, enabled);
+        var enabled = !busy;
+        if (runButton        is not null) runButton.IsEnabled        = enabled;
+        if (listButton       is not null) listButton.IsEnabled       = enabled;
+        if (modeEnterToggle  is not null) modeEnterToggle.IsEnabled  = enabled;
+        if (modeCreateToggle is not null) modeCreateToggle.IsEnabled = enabled;
+        if (modeDeleteToggle is not null) modeDeleteToggle.IsEnabled = enabled;
     }
 
     private void Clear_Click(object sender, RoutedEventArgs e)
         => logLines.Clear();
 
-    private void Mode_Checked(object sender, RoutedEventArgs e)
+    private void ModeToggle_Checked(object sender, RoutedEventArgs e)
     {
-        if (runButton is null || useCustomPathCheckBox is null ||
-            modeEnterRadio is null || modeCreateRadio is null || modeDeleteRadio is null)
+        if (_updatingMode) return;
+        _updatingMode = true;
+
+        if (modeEnterToggle  is not null) modeEnterToggle.IsChecked  = (sender == modeEnterToggle);
+        if (modeCreateToggle is not null) modeCreateToggle.IsChecked = (sender == modeCreateToggle);
+        if (modeDeleteToggle is not null) modeDeleteToggle.IsChecked = (sender == modeDeleteToggle);
+
+        _updatingMode = false;
+        UpdateMode();
+    }
+
+    private void ModeToggle_Unchecked(object sender, RoutedEventArgs e)
+    {
+        if (_updatingMode) return;
+        ((ToggleButton)sender).IsChecked = true;
+    }
+
+    private void UpdateMode()
+    {
+        if (runButton is null || enterOptions is null || createOptions is null || deleteOptions is null)
             return;
 
-        // Reset checkbox whenever mode changes
-        useCustomPathCheckBox.IsChecked = false;
-        useCustomPathCheckBox.Visibility = Visibility.Visible;
+        enterOptions.Visibility  = Visibility.Collapsed;
+        createOptions.Visibility = Visibility.Collapsed;
+        deleteOptions.Visibility = Visibility.Collapsed;
 
-        if (modeEnterRadio.IsChecked == true)
+        if (modeEnterToggle?.IsChecked == true)
         {
             runButton.Content = "Enter";
-            useCustomPathCheckBox.Content = "Start in a custom folder (Windows path)";
-            useCustomPathCheckBox.IsEnabled = true;
+            enterOptions.Visibility = Visibility.Visible;
         }
-        else if (modeCreateRadio.IsChecked == true)
+        else if (modeCreateToggle?.IsChecked == true)
         {
             runButton.Content = "Create";
-            useCustomPathCheckBox.Content = "Select install folder (stores VHDX + wkdir)";
-            useCustomPathCheckBox.IsEnabled = true;
+            createOptions.Visibility = Visibility.Visible;
         }
-        else
+        else if (modeDeleteToggle?.IsChecked == true)
         {
             runButton.Content = "Delete";
-            useCustomPathCheckBox.Content = "(not used for Delete)";
-            useCustomPathCheckBox.Visibility= Visibility.Collapsed;
-            useCustomPathCheckBox.IsEnabled = false;
+            deleteOptions.Visibility = Visibility.Visible;
         }
     }
 
@@ -82,7 +102,6 @@ public sealed partial class MainWindow : Window
         var picker = new FolderPicker();
         picker.FileTypeFilter.Add("*");
         InitializeWithWindow.Initialize(picker, WindowNative.GetWindowHandle(this));
-
         var folder = await picker.PickSingleFolderAsync().AsTask();
         return folder?.Path;
     }
@@ -99,43 +118,74 @@ public sealed partial class MainWindow : Window
             return;
         }
 
-        SetButtonsEnabled(false);
+        SetBusy(true);
 
         try
         {
-            // If checkbox selected, prompt for a folder; else behave like original code.
-            string? selectedPath = null;
-            if (useCustomPathCheckBox?.IsChecked == true)
-            {
-                selectedPath = await PickFolderAsync();
-                if (selectedPath is null)
-                {
-                    LogError("Operation cancelled.");
-                    return;
-                }
-            }
-
             ICommand command;
-            var op = "";
+            string op;
 
-            if (modeCreateRadio?.IsChecked == true)
+            if (modeCreateToggle?.IsChecked == true)
             {
                 op = "Create";
-                command = selectedPath is null
-                    ? new CreateCommand(envName)
-                    : new CreateCommand(envName, selectedPath);
+                var distroId = (distroCombo.SelectedItem as ComboBoxItem)?.Content as string ?? "ubuntu";
+                var distro = DistroSpec.Find(distroId);
+
+                var wantInstallDir = createInstallDirCheck.IsChecked == true;
+                var wantWkdir      = createWkdirCheck.IsChecked == true;
+
+                string? installDir = null;
+                string? wkdir = null;
+
+                if (wantInstallDir)
+                {
+                    installDir = await PickFolderAsync();
+                    if (installDir is null)
+                    {
+                        LogError("Operation cancelled.");
+                        return;
+                    }
+                }
+
+                if (wantWkdir)
+                {
+                    if (wantInstallDir && installDir is not null)
+                    {
+                        wkdir = Path.Combine(installDir, envName, "wkdir");
+                    }
+                    else
+                    {
+                        wkdir = await PickFolderAsync();
+                        if (wkdir is null)
+                        {
+                            LogError("Operation cancelled.");
+                            return;
+                        }
+                    }
+                }
+
+                command = new CreateCommand(envName, installDir, distro, wkdir);
             }
-            else if (modeEnterRadio?.IsChecked == true)
+            else if (modeEnterToggle?.IsChecked == true)
             {
                 op = "Enter";
-                command = selectedPath is null
-                    ? new EnterCommand(envName)
-                    : new EnterCommand(envName, selectedPath);
+                string? dir = null;
+                if (enterDirCheck.IsChecked == true)
+                {
+                    dir = await PickFolderAsync();
+                    if (dir is null)
+                    {
+                        LogError("Operation cancelled.");
+                        return;
+                    }
+                }
+                command = new EnterCommand(envName, dir, newWindow: true);
             }
             else
             {
                 op = "Delete";
-                command = new DeleteCommand(envName);
+                var keepFiles = keepFilesCheck.IsChecked == true;
+                command = new DeleteCommand(envName, keepFiles);
             }
 
             var result = await Task.Run(
@@ -151,7 +201,7 @@ public sealed partial class MainWindow : Window
         }
         finally
         {
-            SetButtonsEnabled(true);
+            SetBusy(false);
         }
     }
 
@@ -160,12 +210,11 @@ public sealed partial class MainWindow : Window
         cancellationTokenSource?.Cancel();
         cancellationTokenSource = new CancellationTokenSource();
 
-        SetButtonsEnabled(false);
+        SetBusy(true);
 
         try
         {
             var command = new ListCommand();
-
             var result = await Task.Run(
                 () => dispatcher.RunAsync(command, Log, cancellationTokenSource.Token),
                 cancellationTokenSource.Token);
@@ -179,7 +228,7 @@ public sealed partial class MainWindow : Window
         }
         finally
         {
-            SetButtonsEnabled(true);
+            SetBusy(false);
         }
     }
 }

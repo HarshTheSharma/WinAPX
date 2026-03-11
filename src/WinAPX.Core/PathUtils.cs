@@ -34,8 +34,7 @@ public static class PathUtils
         throw new ArgumentException("Expected a Windows drive path like C:\\Users\\...\\Project");
     }
 
-    // Convert C:\Users\X -> C:/Users/X and escape spaces for fstab (\040).
-    // Avoids backslashes because bash printf treats \U as a unicode escape.
+    // Convert C:\Users\X -> C:/Users/X, escape spaces, and avoid backslashes
     public static string WinPathToDrvfsFstabPath(string windowsPath)
     {
         var p = CleanName(windowsPath);

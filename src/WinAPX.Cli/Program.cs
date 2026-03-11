@@ -1,11 +1,15 @@
-﻿using WinAPX.Core;
+using WinAPX.Core;
 using WinAPX.Core.Commands;
 
 static void PrintUsage()
 {
-    Console.WriteLine("winapx create <name> [--installDir <windowsPath>] [--homeDir <windowsPath>]");
-    Console.WriteLine("winapx enter <name>");
-    Console.WriteLine("winapx delete <name> [--keepFiles]");
+    Console.WriteLine("Usage:");
+    Console.WriteLine("  winapx list");
+    Console.WriteLine("  winapx create <name> [--distro <id>] [--install-dir <windowsPath>] [--wkdir <windowsPath>]");
+    Console.WriteLine("  winapx enter <name> [--dir <windowsPath>] [--new-window]");
+    Console.WriteLine("  winapx delete <name> [--keep-files]");
+    Console.WriteLine();
+    Console.WriteLine("Distros: ubuntu, arch");
 }
 
 if (args.Length == 0)
@@ -22,6 +26,13 @@ CommandResult result;
 
 switch (args[0].ToLowerInvariant())
 {
+    case "list":
+    {
+        var command = new ListCommand();
+        result = await dispatcher.RunAsync(command, e => Console.WriteLine($"[{e.At:HH:mm:ss}] {e.Message}"), cancellationToken);
+        break;
+    }
+
     case "create":
     {
         if (args.Length < 2)
@@ -32,29 +43,38 @@ switch (args[0].ToLowerInvariant())
 
         var name = args[1];
         string? installDir = null;
+        string? wkdir = null;
+        DistroSpec? distro = null;
 
         for (var i = 2; i < args.Length; i++)
         {
-            if (string.Equals(args[i], "--installdir", StringComparison.OrdinalIgnoreCase) ||
-                string.Equals(args[i], "--installDir", StringComparison.OrdinalIgnoreCase))
+            if (string.Equals(args[i], "--install-dir", StringComparison.OrdinalIgnoreCase))
             {
                 if (i + 1 < args.Length)
-                {
                     installDir = args[++i];
-                }
             }
-            // Back-compat: treat --homeDir as install location
-            else if (string.Equals(args[i], "--homedir", StringComparison.OrdinalIgnoreCase) ||
-                     string.Equals(args[i], "--homeDir", StringComparison.OrdinalIgnoreCase))
+            else if (string.Equals(args[i], "--wkdir", StringComparison.OrdinalIgnoreCase))
+            {
+                if (i + 1 < args.Length)
+                    wkdir = args[++i];
+            }
+            else if (string.Equals(args[i], "--distro", StringComparison.OrdinalIgnoreCase))
             {
                 if (i + 1 < args.Length)
                 {
-                    installDir = args[++i];
+                    var distroId = args[++i];
+                    distro = DistroSpec.Find(distroId);
+                    if (distro is null)
+                    {
+                        Console.Error.WriteLine($"error: unknown distro '{distroId}'. Valid options: ubuntu, arch");
+                        Environment.Exit(1);
+                        return;
+                    }
                 }
             }
         }
 
-        var command = new CreateCommand(name, installDir);
+        var command = new CreateCommand(name, installDir, distro, wkdir);
         result = await dispatcher.RunAsync(command, e => Console.WriteLine($"[{e.At:HH:mm:ss}] {e.Message}"), cancellationToken);
         break;
     }
@@ -67,7 +87,23 @@ switch (args[0].ToLowerInvariant())
             return;
         }
 
-        var command = new EnterCommand(args[1]);
+        string? dir = null;
+        var newWindow = false;
+
+        for (var i = 2; i < args.Length; i++)
+        {
+            if (string.Equals(args[i], "--dir", StringComparison.OrdinalIgnoreCase))
+            {
+                if (i + 1 < args.Length)
+                    dir = args[++i];
+            }
+            else if (string.Equals(args[i], "--new-window", StringComparison.OrdinalIgnoreCase))
+            {
+                newWindow = true;
+            }
+        }
+
+        var command = new EnterCommand(args[1], dir, newWindow);
         result = await dispatcher.RunAsync(command, e => Console.WriteLine($"[{e.At:HH:mm:ss}] {e.Message}"), cancellationToken);
         break;
     }
@@ -83,7 +119,7 @@ switch (args[0].ToLowerInvariant())
         var keepFiles = false;
         for (var i = 2; i < args.Length; i++)
         {
-            if (string.Equals(args[i], "--keepFiles", StringComparison.OrdinalIgnoreCase))
+            if (string.Equals(args[i], "--keep-files", StringComparison.OrdinalIgnoreCase))
                 keepFiles = true;
         }
 

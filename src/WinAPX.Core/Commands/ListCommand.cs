@@ -56,8 +56,8 @@ public sealed class ListCommand : ICommand
                     continue;
                 }
 
-                // WSL2 stores filesystem in ext4.vhdx under BasePath.
-                // WSL1 has no VHDX.
+                // WSL2 stores filesystem in vhdx under BasePath
+                // WSL1 has no vhdx
                 if (info.Version == 2)
                 {
                     var vhdx = Path.Combine(info.BasePath, "ext4.vhdx");
