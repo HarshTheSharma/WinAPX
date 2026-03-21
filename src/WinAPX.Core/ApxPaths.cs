@@ -14,8 +14,7 @@ public static class ApxPaths
         Directory.CreateDirectory(Instances);
     }
 
-    public static string UbuntuBaseTarPath => Path.Combine(Base, "ubuntu-base.tar");
-    public static string BaseTarPath(string distroId) => Path.Combine(Base, $"{distroId}-base.tar");
+public static string BaseTarPath(string distroId) => Path.Combine(Base, $"{distroId}-base.tar");
     public static string InstanceDir(string envName) => Path.Combine(Instances, envName);
 
     public static string Meta => Path.Combine(Root, "meta");

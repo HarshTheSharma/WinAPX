@@ -8,15 +8,17 @@ namespace WinAPX.Core.Commands;
 
 public sealed class EnterCommand : ICommand
 {
-    public string Name => "enter";
-    private readonly string envName;
+private readonly string envName;
     private readonly string? startWindowsPath;
     private readonly bool newWindow;
 
     public EnterCommand(string envName, string? startWindowsPath = null, bool newWindow = false)
     {
         this.envName = PathUtils.CleanName(envName);
-        this.startWindowsPath = string.IsNullOrWhiteSpace(startWindowsPath) ? null : startWindowsPath;
+        if (string.IsNullOrWhiteSpace(startWindowsPath))
+            this.startWindowsPath = null;
+        else
+            this.startWindowsPath = startWindowsPath;
         this.newWindow = newWindow;
     }
 
@@ -42,7 +44,10 @@ public sealed class EnterCommand : ICommand
                 if (File.Exists(defaultDirFile))
                 {
                     var stored = (await File.ReadAllTextAsync(defaultDirFile, cancellationToken)).Trim();
-                    cdPath = stored.Length > 0 ? PathUtils.WinPathToWslPath(stored) : "~";
+                    if (stored.Length > 0)
+                        cdPath = PathUtils.WinPathToWslPath(stored);
+                    else
+                        cdPath = "~";
                 }
                 else
                 {

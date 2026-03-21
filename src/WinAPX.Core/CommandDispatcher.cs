@@ -4,6 +4,9 @@ public sealed class CommandDispatcher
 {
     private readonly WslBackend wslBackend = new();
 
+    public Task<List<string>> ListDistrosAsync(CancellationToken cancellationToken)
+        => wslBackend.ListDistrosQuietAsync(cancellationToken);
+
     public Task<CommandResult> RunAsync(
         ICommand command,
         Action<CommandEvent> onEvent,

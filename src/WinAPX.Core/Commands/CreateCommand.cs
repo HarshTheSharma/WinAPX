@@ -2,8 +2,7 @@ namespace WinAPX.Core.Commands;
 
 public sealed class CreateCommand : ICommand
 {
-    public string Name => "create";
-    private readonly string envName;
+private readonly string envName;
     private readonly string? installLocation;
     private readonly DistroSpec distro;
     private readonly string? defaultDir;
@@ -13,13 +12,25 @@ public sealed class CreateCommand : ICommand
     public CreateCommand(string envName, string? installLocation = null, DistroSpec? distro = null, string? defaultDir = null)
     {
         this.envName = PathUtils.CleanName(envName);
-        this.installLocation = string.IsNullOrWhiteSpace(installLocation) ? null : installLocation;
-        this.distro = distro ?? DistroSpec.Ubuntu;
-        this.defaultDir = string.IsNullOrWhiteSpace(defaultDir) ? null : defaultDir;
+        if (string.IsNullOrWhiteSpace(installLocation))
+            this.installLocation = null;
+        else
+            this.installLocation = installLocation;
+        if (distro is null)
+            this.distro = DistroSpec.Ubuntu;
+        else
+            this.distro = distro;
+        if (string.IsNullOrWhiteSpace(defaultDir))
+            this.defaultDir = null;
+        else
+            this.defaultDir = defaultDir;
 
         var raw = this.envName.ToLowerInvariant();
         var filtered = new string(raw.Where(char.IsLetterOrDigit).ToArray());
-        this.defaultLinuxUser = string.IsNullOrWhiteSpace(filtered) ? "winapx" : filtered;
+        if (string.IsNullOrWhiteSpace(filtered))
+            defaultLinuxUser = "winapx";
+        else
+            defaultLinuxUser = filtered;
     }
 
     public async Task<CommandResult> ExecuteAsync(ICommandContext context, CancellationToken cancellationToken)
@@ -80,7 +91,7 @@ public sealed class CreateCommand : ICommand
                 new[]
                 {
                     "-d", envName, "-u", "root", "--", "bash", "-lc",
-                    $"echo '{defaultLinuxUser} ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/{defaultLinuxUser} && chmod 440 /etc/sudoers.d/{defaultLinuxUser}"
+                    $"mkdir -p /etc/sudoers.d && echo '{defaultLinuxUser} ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/{defaultLinuxUser} && chmod 440 /etc/sudoers.d/{defaultLinuxUser}"
                 },
                 _ => { },
                 e => context.Emit("[err] " + e),
@@ -107,6 +118,19 @@ public sealed class CreateCommand : ICommand
                 _ => { },
                 e => context.Emit("[err] " + e),
                 cancellationToken);
+
+            // Copy shortcut icon next to the VHDX
+            var iconStream = typeof(CreateCommand).Assembly
+                .GetManifestResourceStream("WinAPX.Core.shortcut.ico");
+            if (iconStream is not null)
+            {
+                using (iconStream)
+                {
+                    var iconDest = Path.Combine(instanceDir, "shortcut.ico");
+                    using var fs = File.Create(iconDest);
+                    await iconStream.CopyToAsync(fs, cancellationToken);
+                }
+            }
 
             // Save wkdir if provided and set it up
             if (defaultDir is not null)

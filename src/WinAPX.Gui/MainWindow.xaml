@@ -4,14 +4,28 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     Title="WinAPX">
 
-    <Grid Padding="20" RowDefinitions="Auto,Auto,Auto,*" ColumnDefinitions="*,Auto,Auto">
+    <Grid Padding="24,20,24,16"
+          RowDefinitions="Auto,Auto,*,Auto"
+          ColumnDefinitions="*,Auto,Auto">
 
-        <!-- Row 0: Name + Mode icon toggles + Action button -->
-        <TextBox Grid.Row="0" Grid.Column="0"
-                 x:Name="envNameBox"
-                 Margin="0,0,10,0"
-                 PlaceholderText="Environment name"
-                 VerticalAlignment="Center" />
+        <!-- Env name input, mode toggles, & run button -->
+
+        <Grid Grid.Row="0" Grid.Column="0" Margin="0,0,10,0">
+            <TextBox x:Name="envNameBox"
+                     PlaceholderText="Environment name"
+                     VerticalAlignment="Center"/>
+            <ComboBox x:Name="envNameCombo"
+                      Visibility="Collapsed"
+                      HorizontalAlignment="Stretch"
+                      VerticalAlignment="Center"
+                      PlaceholderText="Select environment"/>
+            <ProgressRing x:Name="envLoadingRing"
+                          Visibility="Collapsed"
+                          IsActive="False"
+                          Width="20" Height="20"
+                          HorizontalAlignment="Center"
+                          VerticalAlignment="Center"/>
+        </Grid>
 
         <StackPanel Grid.Row="0" Grid.Column="1"
                     Orientation="Horizontal"
@@ -46,64 +60,82 @@
                 x:Name="runButton"
                 MinWidth="120"
                 VerticalAlignment="Center"
+                Style="{StaticResource AccentButtonStyle}"
                 Content="Enter"
-                Click="Run_Click" />
+                Click="Run_Click"/>
 
-        <!-- Row 1: Mode-specific options -->
-        <Grid Grid.Row="1" Grid.ColumnSpan="3" Margin="0,14,0,0">
+        <!-- advanced options -->
+        <Grid Grid.Row="1" Grid.ColumnSpan="3" Margin="0,16,0,0">
 
-            <!-- Enter options -->
             <StackPanel x:Name="enterOptions" Spacing="10">
                 <CheckBox x:Name="enterDirCheck" Content="Start in a custom folder"/>
             </StackPanel>
 
-            <!-- Create options -->
-            <Grid x:Name="createOptions" Visibility="Collapsed"
-                  ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto,Auto" RowSpacing="10">
-                <TextBlock Grid.Row="0" Grid.Column="0"
-                           Text="Distro"
-                           VerticalAlignment="Center"
-                           Margin="12,0,12,0"/>
-                <ComboBox Grid.Row="0" Grid.Column="1"
-                          x:Name="distroCombo"
+            <StackPanel x:Name="createOptions" Visibility="Collapsed"
+                        Orientation="Horizontal" Spacing="16" VerticalAlignment="Center">
+                <ComboBox x:Name="distroCombo"
                           SelectedIndex="0"
-                          HorizontalAlignment="Left"
-                          MinWidth="150">
+                          MinWidth="120">
                     <ComboBoxItem Content="ubuntu"/>
                     <ComboBoxItem Content="arch"/>
                 </ComboBox>
-                <CheckBox Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="2"
-                          x:Name="createInstallDirCheck"
-                          Content="Choose custom install folder"/>
-                <CheckBox Grid.Row="2" Grid.Column="0" Grid.ColumnSpan="2"
-                          x:Name="createWkdirCheck"
-                          Content="Use a default working directory"/>
-            </Grid>
+                <CheckBox x:Name="createInstallDirCheck"
+                          Content="Custom install folder"
+                          VerticalAlignment="Center"/>
+                <CheckBox x:Name="createWkdirCheck"
+                          Content="Default working directory"
+                          VerticalAlignment="Center"/>
+            </StackPanel>
 
-            <!-- Delete options -->
             <StackPanel x:Name="deleteOptions" Visibility="Collapsed">
                 <CheckBox x:Name="keepFilesCheck" Content="Keep files on disk"/>
             </StackPanel>
 
         </Grid>
 
-        <!-- Row 2: List + Clear -->
-        <StackPanel Grid.Row="2" Grid.ColumnSpan="3"
-                    Orientation="Horizontal"
-                    Spacing="12"
-                    Margin="0,18,0,0">
-            <Button x:Name="listButton" MinWidth="100" Content="List"  Click="List_Click"/>
-            <Button                     MinWidth="100" Content="Clear" Click="Clear_Click"/>
-        </StackPanel>
+        <!-- console -->
+        <Grid x:Name="advancedPanel"
+              Grid.Row="2" Grid.ColumnSpan="3"
+              Visibility="Collapsed"
+              Margin="0,20,0,0"
+              RowDefinitions="Auto,*">
+            <StackPanel Grid.Row="0" Orientation="Horizontal" Spacing="8" Margin="0,0,0,12">
+                <Button x:Name="listButton" MinWidth="80" Content="List" Click="List_Click"/>
+                <Button MinWidth="80" Content="Clear" Click="Clear_Click"/>
+            </StackPanel>
+            <Border Grid.Row="1"
+                    CornerRadius="8"
+                    Background="#FF1E1E1E"
+                    BorderBrush="#33FFFFFF"
+                    BorderThickness="1"
+                    Padding="12">
+                <ListView ItemsSource="{x:Bind logLines, Mode=OneWay}"
+                          FontFamily="Cascadia Code, Consolas, monospace"
+                          FontSize="12"/>
+            </Border>
+        </Grid>
 
-        <!-- Row 3: Output -->
-        <Border Grid.Row="3" Grid.ColumnSpan="3"
-                Margin="0,18,0,0"
-                CornerRadius="8"
-                Background="#FF2A2A2A"
-                Padding="14">
-            <ListView ItemsSource="{x:Bind logLines, Mode=OneWay}" />
-        </Border>
+        <!-- loading indicator & settings cog -->
+        <Grid Grid.Row="3" Grid.ColumnSpan="3" Margin="0,12,0,0">
+            <ProgressRing x:Name="commandLoadingRing"
+                          HorizontalAlignment="Left"
+                          VerticalAlignment="Center"
+                          Width="20" Height="20"
+                          IsActive="False"
+                          Visibility="Collapsed"/>
+            <Button HorizontalAlignment="Right"
+                    Width="32" Height="32" Padding="0"
+                    ToolTipService.ToolTip="View options">
+                <FontIcon FontFamily="Segoe MDL2 Assets" Glyph="&#xE713;" FontSize="14"/>
+                <Button.Flyout>
+                    <MenuFlyout Placement="TopEdgeAlignedRight">
+                        <ToggleMenuFlyoutItem x:Name="showConsoleMenuItem"
+                                              Text="Show console"
+                                              Click="ShowConsole_Click"/>
+                    </MenuFlyout>
+                </Button.Flyout>
+            </Button>
+        </Grid>
 
     </Grid>
 </Window>

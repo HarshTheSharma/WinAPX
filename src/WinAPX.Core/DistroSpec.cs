@@ -18,7 +18,7 @@ public sealed record DistroSpec
     {
         Id = "arch",
         DisplayName = "Arch Linux",
-        SourceWslDistro = "Arch"
+        SourceWslDistro = "archlinux"
     };
 
     public static readonly IReadOnlyList<DistroSpec> All = [Ubuntu, Arch];

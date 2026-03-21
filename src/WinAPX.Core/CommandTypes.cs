@@ -11,7 +11,6 @@ public sealed class CommandResult
 
 public interface ICommand
 {
-    string Name { get; }
     Task<CommandResult> ExecuteAsync(ICommandContext context, CancellationToken cancellationToken);
 }
 

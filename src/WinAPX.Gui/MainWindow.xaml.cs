@@ -1,4 +1,5 @@
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Controls.Primitives;
 using System;
@@ -26,31 +27,58 @@ public sealed partial class MainWindow : Window
     {
         InitializeComponent();
 
+        SystemBackdrop = new MicaBackdrop();
+
         var iconPath = Path.Combine(AppContext.BaseDirectory, "Assets", "icon.ico");
         if (File.Exists(iconPath))
             AppWindow.SetIcon(iconPath);
 
         UpdateMode();
+        ((FrameworkElement)Content).Loaded += (_, _) => _ = PopulateEnvDropdownAsync();
     }
 
     private void Log(CommandEvent e)
         => DispatcherQueue.TryEnqueue(() => logLines.Add($"[{e.At:HH:mm:ss}] {e.Message}"));
 
-    private void LogError(string message)
-        => DispatcherQueue.TryEnqueue(() => logLines.Add($"[ERROR] {message}"));
+    private async Task ShowErrorAsync(string message)
+    {
+        var dialog = new ContentDialog
+        {
+            Title = "Error",
+            Content = message,
+            CloseButtonText = "OK",
+            XamlRoot = Content.XamlRoot
+        };
+        try { await dialog.ShowAsync(); }
+        catch { /* dialog already open or window closing */ }
+    }
 
     private void SetBusy(bool busy)
     {
         var enabled = !busy;
-        if (runButton        is not null) runButton.IsEnabled        = enabled;
-        if (listButton       is not null) listButton.IsEnabled       = enabled;
-        if (modeEnterToggle  is not null) modeEnterToggle.IsEnabled  = enabled;
-        if (modeCreateToggle is not null) modeCreateToggle.IsEnabled = enabled;
-        if (modeDeleteToggle is not null) modeDeleteToggle.IsEnabled = enabled;
+        if (runButton          is not null) runButton.IsEnabled          = enabled;
+        if (listButton         is not null) listButton.IsEnabled         = enabled;
+        if (modeEnterToggle    is not null) modeEnterToggle.IsEnabled    = enabled;
+        if (modeCreateToggle   is not null) modeCreateToggle.IsEnabled   = enabled;
+        if (modeDeleteToggle   is not null) modeDeleteToggle.IsEnabled   = enabled;
+        if (envNameCombo       is not null) envNameCombo.IsEnabled       = enabled;
+        if (commandLoadingRing is not null)
+        {
+            commandLoadingRing.IsActive   = busy;
+            commandLoadingRing.Visibility = busy ? Visibility.Visible : Visibility.Collapsed;
+        }
     }
 
     private void Clear_Click(object sender, RoutedEventArgs e)
         => logLines.Clear();
+
+    private void ShowConsole_Click(object sender, RoutedEventArgs e)
+    {
+        if (showConsoleMenuItem.IsChecked)
+            advancedPanel.Visibility = Visibility.Visible;
+        else
+            advancedPanel.Visibility = Visibility.Collapsed;
+    }
 
     private void ModeToggle_Checked(object sender, RoutedEventArgs e)
     {
@@ -63,6 +91,8 @@ public sealed partial class MainWindow : Window
 
         _updatingMode = false;
         UpdateMode();
+        if (modeEnterToggle?.IsChecked == true || modeDeleteToggle?.IsChecked == true)
+            _ = PopulateEnvDropdownAsync();
     }
 
     private void ModeToggle_Unchecked(object sender, RoutedEventArgs e)
@@ -79,6 +109,18 @@ public sealed partial class MainWindow : Window
         enterOptions.Visibility  = Visibility.Collapsed;
         createOptions.Visibility = Visibility.Collapsed;
         deleteOptions.Visibility = Visibility.Collapsed;
+
+        var isCreate = modeCreateToggle?.IsChecked == true;
+        if (isCreate)
+        {
+            envNameBox.Visibility   = Visibility.Visible;
+            envNameCombo.Visibility = Visibility.Collapsed;
+        }
+        else
+        {
+            envNameBox.Visibility   = Visibility.Collapsed;
+            envNameCombo.Visibility = Visibility.Visible;
+        }
 
         if (modeEnterToggle?.IsChecked == true)
         {
@@ -97,6 +139,44 @@ public sealed partial class MainWindow : Window
         }
     }
 
+    private void SwitchToEnterMode()
+    {
+        _updatingMode = true;
+        modeEnterToggle.IsChecked  = true;
+        modeCreateToggle.IsChecked = false;
+        modeDeleteToggle.IsChecked = false;
+        _updatingMode = false;
+        UpdateMode();
+    }
+
+    private async Task PopulateEnvDropdownAsync()
+    {
+        var previousSelection = envNameCombo.SelectedItem as string;
+        envNameCombo.IsEnabled    = false;
+        envLoadingRing.IsActive   = true;
+        envLoadingRing.Visibility = Visibility.Visible;
+        envNameCombo.Items.Clear();
+        try
+        {
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+            var distros = await dispatcher.ListDistrosAsync(cts.Token);
+            foreach (var d in distros)
+                envNameCombo.Items.Add(d);
+            if (envNameCombo.Items.Count > 0)
+            {
+                var restore = distros.FindIndex(d => string.Equals(d, previousSelection, StringComparison.OrdinalIgnoreCase));
+                envNameCombo.SelectedIndex = restore >= 0 ? restore : 0;
+            }
+        }
+        catch { /* leave empty on failure */ }
+        finally
+        {
+            envLoadingRing.IsActive   = false;
+            envLoadingRing.Visibility = Visibility.Collapsed;
+            envNameCombo.IsEnabled    = true;
+        }
+    }
+
     private async Task<string?> PickFolderAsync()
     {
         var picker = new FolderPicker();
@@ -111,10 +191,23 @@ public sealed partial class MainWindow : Window
         cancellationTokenSource?.Cancel();
         cancellationTokenSource = new CancellationTokenSource();
 
-        var envName = (envNameBox.Text ?? "").Trim();
+        string envName;
+        if (modeCreateToggle?.IsChecked == true)
+        {
+            envName = (envNameBox.Text ?? "").Trim();
+        }
+        else
+        {
+            var selected = envNameCombo.SelectedItem as string;
+            if (selected is null)
+                envName = "";
+            else
+                envName = selected.Trim();
+        }
+
         if (envName.Length == 0)
         {
-            LogError("Missing environment name.");
+            await ShowErrorAsync("Please enter an environment name.");
             return;
         }
 
@@ -141,10 +234,7 @@ public sealed partial class MainWindow : Window
                 {
                     installDir = await PickFolderAsync();
                     if (installDir is null)
-                    {
-                        LogError("Operation cancelled.");
                         return;
-                    }
                 }
 
                 if (wantWkdir)
@@ -157,10 +247,7 @@ public sealed partial class MainWindow : Window
                     {
                         wkdir = await PickFolderAsync();
                         if (wkdir is null)
-                        {
-                            LogError("Operation cancelled.");
                             return;
-                        }
                     }
                 }
 
@@ -174,10 +261,7 @@ public sealed partial class MainWindow : Window
                 {
                     dir = await PickFolderAsync();
                     if (dir is null)
-                    {
-                        LogError("Operation cancelled.");
                         return;
-                    }
                 }
                 command = new EnterCommand(envName, dir, newWindow: true);
             }
@@ -193,12 +277,28 @@ public sealed partial class MainWindow : Window
                 cancellationTokenSource.Token);
 
             if (!result.Ok)
-                LogError(result.Error ?? $"{op} failed.");
+            {
+                await ShowErrorAsync(result.Error ?? $"{op} failed.");
+            }
+            else if (modeCreateToggle?.IsChecked == true)
+            {
+                SwitchToEnterMode();
+                await PopulateEnvDropdownAsync();
+                for (int i = 0; i < envNameCombo.Items.Count; i++)
+                {
+                    if (string.Equals(envNameCombo.Items[i] as string, envName, StringComparison.OrdinalIgnoreCase))
+                    {
+                        envNameCombo.SelectedIndex = i;
+                        break;
+                    }
+                }
+            }
+            else if (modeDeleteToggle?.IsChecked == true)
+            {
+                await PopulateEnvDropdownAsync();
+            }
         }
-        catch (TaskCanceledException)
-        {
-            LogError("Operation cancelled.");
-        }
+        catch (TaskCanceledException) { /* user cancelled folder picker, no popup needed */ }
         finally
         {
             SetBusy(false);
@@ -220,12 +320,9 @@ public sealed partial class MainWindow : Window
                 cancellationTokenSource.Token);
 
             if (!result.Ok)
-                LogError(result.Error ?? "List failed.");
+                await ShowErrorAsync(result.Error ?? "List failed.");
         }
-        catch (TaskCanceledException)
-        {
-            LogError("List cancelled.");
-        }
+        catch (TaskCanceledException) { }
         finally
         {
             SetBusy(false);

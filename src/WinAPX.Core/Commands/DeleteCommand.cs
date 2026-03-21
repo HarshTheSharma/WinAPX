@@ -8,8 +8,7 @@ namespace WinAPX.Core.Commands;
 
 public sealed class DeleteCommand : ICommand
 {
-    public string Name => "delete";
-    private readonly string envName;
+private readonly string envName;
     private readonly bool keepFiles;
 
     public DeleteCommand(string envName, bool keepFiles = false)
@@ -54,9 +53,11 @@ public sealed class DeleteCommand : ICommand
                 return new CommandResult { Ok = true };
             }
 
-            var deletePath = !string.IsNullOrWhiteSpace(basePath)
-                ? basePath
-                : ApxPaths.InstanceDir(envName);
+            string deletePath;
+            if (!string.IsNullOrWhiteSpace(basePath))
+                deletePath = basePath;
+            else
+                deletePath = ApxPaths.InstanceDir(envName);
 
             if (Directory.Exists(deletePath))
             {

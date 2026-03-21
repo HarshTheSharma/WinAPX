@@ -51,9 +51,14 @@ public sealed class WslBackend
         var (exitCode, stdout, stderr) = await RunCaptureAsync(new[] { "-l", "-q" }, cancellationToken);
 
         // If this is empty it usually means WSL failed to run
+        var sourceDistros = DistroSpec.All
+            .Select(d => d.SourceWslDistro)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
         var names = stdout
-            .Select(x => x.Trim())
-            .Where(x => x.Length > 0)
+            .Select(x => x.Replace("\0", "").Trim())
+            .Where(x => x.Any(char.IsLetterOrDigit))
+            .Where(x => !sourceDistros.Contains(x))
             .ToList();
 
         return names;
@@ -61,7 +66,11 @@ public sealed class WslBackend
 
     public async Task<bool> DistroExistsAsync(string distroName, CancellationToken cancellationToken)
     {
-        var name = (distroName ?? "").Trim();
+        string name;
+        if (distroName is null)
+            name = "".Trim();
+        else
+            name = distroName.Trim();
         if (name.Length == 0) return false;
 
         var distros = await ListDistrosQuietAsync(cancellationToken);
@@ -105,27 +114,7 @@ public sealed class WslBackend
         return false;
     }
 
-    public async Task<bool> SupportsCdAsync(CancellationToken cancellationToken)
-    {
-        var (exitCode, stdout, _) = await RunCaptureAsync(new[] { "--help" }, cancellationToken);
-        if (exitCode != 0) return false;
-
-        return string.Join("\n", stdout).Contains("--cd", StringComparison.OrdinalIgnoreCase);
-    }
-
-    public Task EnsureUbuntuInstalledAsync(Action<string> log, CancellationToken cancellationToken)
-    {
-        // Again need to remove this hardcode later
-        log("Assuming Ubuntu is already installed.");
-        return Task.CompletedTask;
-    }
-
-    public async Task EnsureUbuntuBaseTarAsync(string ubuntuBaseTarPath, Action<string> log, CancellationToken cancellationToken)
-    {
-        await EnsureBaseTarAsync(DistroSpec.Ubuntu, ubuntuBaseTarPath, log, cancellationToken);
-    }
-
-    public async Task EnsureBaseTarAsync(DistroSpec distro, string tarPath, Action<string> log, CancellationToken cancellationToken)
+public async Task EnsureBaseTarAsync(DistroSpec distro, string tarPath, Action<string> log, CancellationToken cancellationToken)
     {
         if (File.Exists(tarPath))
         {
@@ -157,14 +146,4 @@ public sealed class WslBackend
         }
     }
 
-    public async Task<string> SelfTestAsync(CancellationToken cancellationToken)
-    {
-        var (exitCode, stdout, stderr) = await RunCaptureAsync(new[] { "-l", "-q" }, cancellationToken);
-
-        var s1 = "wsl -l -q exitCode=" + exitCode;
-        var s2 = "stdout:\n" + string.Join("\n", stdout);
-        var s3 = "stderr:\n" + string.Join("\n", stderr);
-
-        return s1 + "\n\n" + s2 + "\n\n" + s3;
-    }
 }
