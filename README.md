@@ -2,3 +2,4 @@
 ## This program allows users to easily standalone linux environments through WSL.
 ### Uses include creating individual isolated dev containers, sandboxes for apps, and etc.
 
+<img src="src/icon.png">
