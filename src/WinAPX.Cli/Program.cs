@@ -5,9 +5,11 @@ static void PrintUsage()
 {
     Console.WriteLine("Usage:");
     Console.WriteLine("  winapx list");
-    Console.WriteLine("  winapx create <name> [--distro <id>] [--install-dir <windowsPath>] [--wkdir <windowsPath>]");
+    Console.WriteLine("  winapx create <name> [--distro <id>] [--install-dir <windowsPath>] [--wkdir <windowsPath>] [--packages \"<pkg1> <pkg2>...\"] [--install-recommended-pkgs]");
     Console.WriteLine("  winapx enter <name> [--dir <windowsPath>] [--new-window]");
     Console.WriteLine("  winapx delete <name> [--keep-files]");
+    Console.WriteLine("  winapx export <name> <outputFile.tar>");
+    Console.WriteLine("  winapx import <name> <tarFile> [--install-dir <windowsPath>]");
     Console.WriteLine();
     Console.WriteLine("Distros: ubuntu, arch");
 }
@@ -44,6 +46,8 @@ switch (args[0].ToLowerInvariant())
         var name = args[1];
         string? installDir = null;
         string? wkdir = null;
+        string? packages = null;
+        var installRecommendedPkgs = false;
         DistroSpec? distro = null;
 
         for (var i = 2; i < args.Length; i++)
@@ -57,6 +61,15 @@ switch (args[0].ToLowerInvariant())
             {
                 if (i + 1 < args.Length)
                     wkdir = args[++i];
+            }
+            else if (string.Equals(args[i], "--packages", StringComparison.OrdinalIgnoreCase))
+            {
+                if (i + 1 < args.Length)
+                    packages = args[++i];
+            }
+            else if (string.Equals(args[i], "--install-recommended-pkgs", StringComparison.OrdinalIgnoreCase))
+            {
+                installRecommendedPkgs = true;
             }
             else if (string.Equals(args[i], "--distro", StringComparison.OrdinalIgnoreCase))
             {
@@ -74,7 +87,7 @@ switch (args[0].ToLowerInvariant())
             }
         }
 
-        var command = new CreateCommand(name, installDir, distro, wkdir);
+        var command = new CreateCommand(name, installDir, distro, wkdir, packages, installRecommendedPkgs);
         result = await dispatcher.RunAsync(command, e => Console.WriteLine($"[{e.At:HH:mm:ss}] {e.Message}"), cancellationToken);
         break;
     }
@@ -124,6 +137,43 @@ switch (args[0].ToLowerInvariant())
         }
 
         var command = new DeleteCommand(args[1], keepFiles);
+        result = await dispatcher.RunAsync(command, e => Console.WriteLine($"[{e.At:HH:mm:ss}] {e.Message}"), cancellationToken);
+        break;
+    }
+
+    case "export":
+    {
+        if (args.Length < 3)
+        {
+            PrintUsage();
+            return;
+        }
+
+        var command = new ExportCommand(args[1], args[2]);
+        result = await dispatcher.RunAsync(command, e => Console.WriteLine($"[{e.At:HH:mm:ss}] {e.Message}"), cancellationToken);
+        break;
+    }
+
+    case "import":
+    {
+        if (args.Length < 3)
+        {
+            PrintUsage();
+            return;
+        }
+
+        string? installDir = null;
+
+        for (var i = 3; i < args.Length; i++)
+        {
+            if (string.Equals(args[i], "--install-dir", StringComparison.OrdinalIgnoreCase))
+            {
+                if (i + 1 < args.Length)
+                    installDir = args[++i];
+            }
+        }
+
+        var command = new ImportCommand(args[1], args[2], installDir);
         result = await dispatcher.RunAsync(command, e => Console.WriteLine($"[{e.At:HH:mm:ss}] {e.Message}"), cancellationToken);
         break;
     }

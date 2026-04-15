@@ -6,10 +6,12 @@ private readonly string envName;
     private readonly string? installLocation;
     private readonly DistroSpec distro;
     private readonly string? defaultDir;
+    private readonly string? packages;
+    private readonly bool installRecommendedPkgs;
 
     private readonly string defaultLinuxUser;
 
-    public CreateCommand(string envName, string? installLocation = null, DistroSpec? distro = null, string? defaultDir = null)
+    public CreateCommand(string envName, string? installLocation = null, DistroSpec? distro = null, string? defaultDir = null, string? packages = null, bool installRecommendedPkgs = false)
     {
         this.envName = PathUtils.CleanName(envName);
         if (string.IsNullOrWhiteSpace(installLocation))
@@ -24,6 +26,11 @@ private readonly string envName;
             this.defaultDir = null;
         else
             this.defaultDir = defaultDir;
+        if (string.IsNullOrWhiteSpace(packages))
+            this.packages = null;
+        else
+            this.packages = packages.Trim();
+        this.installRecommendedPkgs = installRecommendedPkgs;
 
         var raw = this.envName.ToLowerInvariant();
         var filtered = new string(raw.Where(char.IsLetterOrDigit).ToArray());
@@ -86,6 +93,32 @@ private readonly string envName;
             if (exitCode != 0)
                 return new CommandResult { Ok = false, ExitCode = exitCode, Error = "error: failed to create default user" };
 
+            if (installRecommendedPkgs)
+            {
+                context.Emit("Installing recommended packages...");
+                var recommendedPkgs = distro.Id switch
+                {
+                    "arch" => "sudo curl wget git ca-certificates base-devel gcc",
+                    _      => "sudo curl wget git ca-certificates build-essential gcc"
+                };
+                var recommendedCmd = distro.Id switch
+                {
+                    "arch" => $"pacman -Sy --noconfirm {recommendedPkgs}",
+                    _      => $"apt-get update -y && apt-get install -y {recommendedPkgs}"
+                };
+                exitCode = await context.WslBackend.RunAsync(
+                    new[]
+                    {
+                        "-d", envName, "-u", "root", "--", "bash", "-lc", recommendedCmd
+                    },
+                    s => context.Emit(s),
+                    e => context.Emit("[err] " + e),
+                    cancellationToken);
+
+                if (exitCode != 0)
+                    return new CommandResult { Ok = false, ExitCode = exitCode, Error = "error: recommended package installation failed" };
+            }
+
             // create with passwordless sudo
             exitCode = await context.WslBackend.RunAsync(
                 new[]
@@ -112,6 +145,30 @@ private readonly string envName;
 
             if (exitCode != 0)
                 return new CommandResult { Ok = false, ExitCode = exitCode, Error = "error: failed to write /etc/wsl.conf" };
+
+            if (packages is not null)
+            {
+                context.Emit($"Installing packages: {packages}");
+                var installCmd = distro.Id switch
+                {
+                    "arch" => $"pacman -Sy --noconfirm {packages}",
+                    _      => $"apt-get update -y && apt-get install -y {packages}"
+                };
+                exitCode = await context.WslBackend.RunAsync(
+                    new[]
+                    {
+                        "-d", envName, "-u", "root", "--", "bash", "-lc", installCmd
+                    },
+                    s => context.Emit(s),
+                    e => context.Emit("[err] " + e),
+                    cancellationToken);
+
+                if (exitCode != 0)
+                    return new CommandResult { Ok = false, ExitCode = exitCode, Error = "error: package installation failed" };
+
+                Directory.CreateDirectory(ApxPaths.MetaDir(envName));
+                await File.WriteAllTextAsync(ApxPaths.PackagesFile(envName), packages, cancellationToken);
+            }
 
             await context.WslBackend.RunAsync(
                 new[] { "--terminate", envName },

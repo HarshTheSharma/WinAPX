@@ -64,10 +64,6 @@ private readonly string envName;
                 context.Emit($"Deleting files: {deletePath}");
                 Directory.Delete(deletePath, recursive: true);
             }
-            else
-            {
-                context.Emit($"Files already missing: {deletePath}");
-            }
 
             // Clean up metadata
             var metaDir = ApxPaths.MetaDir(envName);
