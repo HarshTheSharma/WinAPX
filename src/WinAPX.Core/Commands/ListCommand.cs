@@ -31,10 +31,16 @@ public sealed class ListCommand : ICommand
             foreach (var subName in subKeys)
             {
                 using var sub = lxss.OpenSubKey(subName);
-                if (sub is null) continue;
+                if (sub is null)
+                {
+                    continue;
+                }
 
                 var name = sub.GetValue("DistributionName") as string;
-                if (string.IsNullOrWhiteSpace(name)) continue;
+                if (string.IsNullOrWhiteSpace(name))
+                {
+                    continue;
+                }
 
                 var basePath = sub.GetValue("BasePath") as string;
                 if (string.IsNullOrWhiteSpace(basePath))

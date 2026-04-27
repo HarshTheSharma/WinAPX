@@ -8,17 +8,14 @@ namespace WinAPX.Core.Commands;
 
 public sealed class EnterCommand : ICommand
 {
-private readonly string envName;
+    private readonly string envName;
     private readonly string? startWindowsPath;
     private readonly bool newWindow;
 
     public EnterCommand(string envName, string? startWindowsPath = null, bool newWindow = false)
     {
-        this.envName = PathUtils.CleanName(envName);
-        if (string.IsNullOrWhiteSpace(startWindowsPath))
-            this.startWindowsPath = null;
-        else
-            this.startWindowsPath = startWindowsPath;
+        this.envName = ApxPaths.CleanName(envName);
+        this.startWindowsPath = string.IsNullOrWhiteSpace(startWindowsPath) ? null : startWindowsPath;
         this.newWindow = newWindow;
     }
 
@@ -27,16 +24,20 @@ private readonly string envName;
         try
         {
             if (envName.Length == 0)
+            {
                 return new CommandResult { Ok = false, Error = "error: missing env name" };
+            }
 
             if (!await context.WslBackend.DistroExistsAsync(envName, cancellationToken))
+            {
                 return new CommandResult { Ok = false, Error = $"error: WSL distro '{envName}' not found" };
+            }
 
             // use the starting directory
             string cdPath;
             if (startWindowsPath is not null)
             {
-                cdPath = PathUtils.WinPathToWslPath(startWindowsPath);
+                cdPath = ApxPaths.WinPathToWslPath(startWindowsPath);
             }
             else
             {
@@ -44,10 +45,7 @@ private readonly string envName;
                 if (File.Exists(defaultDirFile))
                 {
                     var stored = (await File.ReadAllTextAsync(defaultDirFile, cancellationToken)).Trim();
-                    if (stored.Length > 0)
-                        cdPath = PathUtils.WinPathToWslPath(stored);
-                    else
-                        cdPath = "~";
+                    cdPath = stored.Length > 0 ? ApxPaths.WinPathToWslPath(stored) : "~";
                 }
                 else
                 {
@@ -109,7 +107,10 @@ private readonly string envName;
         foreach (var dir in pathValue.Split(';', StringSplitOptions.RemoveEmptyEntries))
         {
             var candidate = Path.Combine(dir.Trim(), exeName);
-            if (File.Exists(candidate)) return candidate;
+            if (File.Exists(candidate))
+            {
+                return candidate;
+            }
         }
 
         return null;

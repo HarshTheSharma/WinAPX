@@ -2,7 +2,13 @@ namespace WinAPX.Core.Commands;
 
 public sealed class CreateCommand : ICommand
 {
-private readonly string envName;
+    internal static readonly HashSet<string> ReservedNames = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "list", "create", "enter", "delete", "export", "import",
+        "help", "--help", "-h", "info", "version"
+    };
+
+    private readonly string envName;
     private readonly string? installLocation;
     private readonly DistroSpec distro;
     private readonly string? defaultDir;
@@ -13,31 +19,16 @@ private readonly string envName;
 
     public CreateCommand(string envName, string? installLocation = null, DistroSpec? distro = null, string? defaultDir = null, string? packages = null, bool installRecommendedPkgs = false)
     {
-        this.envName = PathUtils.CleanName(envName);
-        if (string.IsNullOrWhiteSpace(installLocation))
-            this.installLocation = null;
-        else
-            this.installLocation = installLocation;
-        if (distro is null)
-            this.distro = DistroSpec.Ubuntu;
-        else
-            this.distro = distro;
-        if (string.IsNullOrWhiteSpace(defaultDir))
-            this.defaultDir = null;
-        else
-            this.defaultDir = defaultDir;
-        if (string.IsNullOrWhiteSpace(packages))
-            this.packages = null;
-        else
-            this.packages = packages.Trim();
+        this.envName = ApxPaths.CleanName(envName);
+        this.installLocation = string.IsNullOrWhiteSpace(installLocation) ? null : installLocation;
+        this.distro = distro ?? DistroSpec.Ubuntu;
+        this.defaultDir = string.IsNullOrWhiteSpace(defaultDir) ? null : defaultDir;
+        this.packages = string.IsNullOrWhiteSpace(packages) ? null : packages.Trim();
         this.installRecommendedPkgs = installRecommendedPkgs;
 
         var raw = this.envName.ToLowerInvariant();
         var filtered = new string(raw.Where(char.IsLetterOrDigit).ToArray());
-        if (string.IsNullOrWhiteSpace(filtered))
-            defaultLinuxUser = "winapx";
-        else
-            defaultLinuxUser = filtered;
+        defaultLinuxUser = string.IsNullOrWhiteSpace(filtered) ? "winapx" : filtered;
     }
 
     public async Task<CommandResult> ExecuteAsync(ICommandContext context, CancellationToken cancellationToken)
@@ -45,12 +36,21 @@ private readonly string envName;
         try
         {
             if (envName.Length == 0)
+            {
                 return new CommandResult { Ok = false, Error = "error: missing env name" };
+            }
+
+            if (ReservedNames.Contains(envName))
+            {
+                return new CommandResult { Ok = false, Error = $"error: '{envName}' is a reserved command name; pick another" };
+            }
 
             ApxPaths.EnsureBaseDirs();
 
             if (await context.WslBackend.DistroExistsAsync(envName, cancellationToken))
+            {
                 return new CommandResult { Ok = false, Error = $"error: WSL distro '{envName}' already exists" };
+            }
 
             context.Emit($"Ensuring base {distro.DisplayName} tar exists...");
             var baseTarPath = ApxPaths.BaseTarPath(distro.Id);
@@ -67,7 +67,9 @@ private readonly string envName;
             Directory.CreateDirectory(instanceDir);
 
             if (Directory.EnumerateFileSystemEntries(instanceDir).Any())
+            {
                 return new CommandResult { Ok = false, Error = $"error: instance dir not empty: {instanceDir}" };
+            }
 
             context.Emit($"Importing '{envName}' from base {distro.DisplayName}...");
             var exitCode = await context.WslBackend.RunAsync(
@@ -77,7 +79,9 @@ private readonly string envName;
                 cancellationToken);
 
             if (exitCode != 0)
+            {
                 return new CommandResult { Ok = false, ExitCode = exitCode, Error = "error: wsl --import failed" };
+            }
 
             context.Emit($"Provisioning default user '{defaultLinuxUser}'...");
             exitCode = await context.WslBackend.RunAsync(
@@ -91,7 +95,40 @@ private readonly string envName;
                 cancellationToken);
 
             if (exitCode != 0)
+            {
                 return new CommandResult { Ok = false, ExitCode = exitCode, Error = "error: failed to create default user" };
+            }
+
+            // create with passwordless sudo
+            exitCode = await context.WslBackend.RunAsync(
+                new[]
+                {
+                    "-d", envName, "-u", "root", "--", "bash", "-lc",
+                    $"mkdir -p /etc/sudoers.d && echo '{defaultLinuxUser} ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/{defaultLinuxUser} && chmod 440 /etc/sudoers.d/{defaultLinuxUser}"
+                },
+                _ => { },
+                e => context.Emit("[err] " + e),
+                cancellationToken);
+
+            if (exitCode != 0)
+            {
+                return new CommandResult { Ok = false, ExitCode = exitCode, Error = "error: failed to configure sudoers" };
+            }
+
+            exitCode = await context.WslBackend.RunAsync(
+                new[]
+                {
+                    "-d", envName, "-u", "root", "--", "bash", "-lc",
+                    $"printf '[user]\\ndefault={defaultLinuxUser}\\n' > /etc/wsl.conf"
+                },
+                s => context.Emit(s),
+                e => context.Emit("[err] " + e),
+                cancellationToken);
+
+            if (exitCode != 0)
+            {
+                return new CommandResult { Ok = false, ExitCode = exitCode, Error = "error: failed to write /etc/wsl.conf" };
+            }
 
             if (installRecommendedPkgs)
             {
@@ -116,35 +153,10 @@ private readonly string envName;
                     cancellationToken);
 
                 if (exitCode != 0)
+                {
                     return new CommandResult { Ok = false, ExitCode = exitCode, Error = "error: recommended package installation failed" };
+                }
             }
-
-            // create with passwordless sudo
-            exitCode = await context.WslBackend.RunAsync(
-                new[]
-                {
-                    "-d", envName, "-u", "root", "--", "bash", "-lc",
-                    $"mkdir -p /etc/sudoers.d && echo '{defaultLinuxUser} ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/{defaultLinuxUser} && chmod 440 /etc/sudoers.d/{defaultLinuxUser}"
-                },
-                _ => { },
-                e => context.Emit("[err] " + e),
-                cancellationToken);
-
-            if (exitCode != 0)
-                return new CommandResult { Ok = false, ExitCode = exitCode, Error = "error: failed to configure sudoers" };
-
-            exitCode = await context.WslBackend.RunAsync(
-                new[]
-                {
-                    "-d", envName, "-u", "root", "--", "bash", "-lc",
-                    $"printf '[user]\\ndefault={defaultLinuxUser}\\n' > /etc/wsl.conf"
-                },
-                s => context.Emit(s),
-                e => context.Emit("[err] " + e),
-                cancellationToken);
-
-            if (exitCode != 0)
-                return new CommandResult { Ok = false, ExitCode = exitCode, Error = "error: failed to write /etc/wsl.conf" };
 
             if (packages is not null)
             {
@@ -164,7 +176,9 @@ private readonly string envName;
                     cancellationToken);
 
                 if (exitCode != 0)
+                {
                     return new CommandResult { Ok = false, ExitCode = exitCode, Error = "error: package installation failed" };
+                }
 
                 Directory.CreateDirectory(ApxPaths.MetaDir(envName));
                 await File.WriteAllTextAsync(ApxPaths.PackagesFile(envName), packages, cancellationToken);
@@ -196,7 +210,7 @@ private readonly string envName;
                 Directory.CreateDirectory(ApxPaths.MetaDir(envName));
                 await File.WriteAllTextAsync(ApxPaths.DefaultDirFile(envName), defaultDir, cancellationToken);
 
-                var wkdirLinux = PathUtils.WinPathToWslPath(defaultDir);
+                var wkdirLinux = ApxPaths.WinPathToWslPath(defaultDir);
 
                 // make the ~/wkdir symlink
                 await context.WslBackend.RunAsync(

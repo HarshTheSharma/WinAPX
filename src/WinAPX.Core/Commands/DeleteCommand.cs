@@ -8,12 +8,12 @@ namespace WinAPX.Core.Commands;
 
 public sealed class DeleteCommand : ICommand
 {
-private readonly string envName;
+    private readonly string envName;
     private readonly bool keepFiles;
 
     public DeleteCommand(string envName, bool keepFiles = false)
     {
-        this.envName = PathUtils.CleanName(envName);
+        this.envName = ApxPaths.CleanName(envName);
         this.keepFiles = keepFiles;
     }
 
@@ -22,10 +22,14 @@ private readonly string envName;
         try
         {
             if (envName.Length == 0)
+            {
                 return new CommandResult { Ok = false, Error = "error: missing env name" };
+            }
 
             if (!await context.WslBackend.DistroExistsAsync(envName, cancellationToken))
+            {
                 return new CommandResult { Ok = false, Error = $"error: WSL distro '{envName}' not found" };
+            }
 
             // get where WSL stores virtual hard disk
             var basePath = TryGetWslBasePath(envName);
@@ -45,7 +49,12 @@ private readonly string envName;
                 cancellationToken);
 
             if (exitCode != 0)
+            {
                 return new CommandResult { Ok = false, ExitCode = exitCode, Error = "error: wsl --unregister failed" };
+            }
+
+            // Cascade: clean up all exported apps for this env
+            await DeleteAppCommand.DeleteAllForEnvAsync(envName, context, cancellationToken);
 
             if (keepFiles)
             {
@@ -53,11 +62,7 @@ private readonly string envName;
                 return new CommandResult { Ok = true };
             }
 
-            string deletePath;
-            if (!string.IsNullOrWhiteSpace(basePath))
-                deletePath = basePath;
-            else
-                deletePath = ApxPaths.InstanceDir(envName);
+            var deletePath = !string.IsNullOrWhiteSpace(basePath) ? basePath : ApxPaths.InstanceDir(envName);
 
             if (Directory.Exists(deletePath))
             {
@@ -68,7 +73,9 @@ private readonly string envName;
             // Clean up metadata
             var metaDir = ApxPaths.MetaDir(envName);
             if (Directory.Exists(metaDir))
+            {
                 Directory.Delete(metaDir, recursive: true);
+            }
 
             context.Emit("Done.");
             return new CommandResult { Ok = true };
@@ -83,16 +90,24 @@ private readonly string envName;
     {
         // HKCU\Software\Microsoft\Windows\CurrentVersion\Lxss\<GUID>
         using var lxss = Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Lxss");
-        if (lxss is null) return null;
+        if (lxss is null)
+        {
+            return null;
+        }
 
         foreach (var subName in lxss.GetSubKeyNames())
         {
             using var sub = lxss.OpenSubKey(subName);
-            if (sub is null) continue;
+            if (sub is null)
+            {
+                continue;
+            }
 
             var name = sub.GetValue("DistributionName") as string;
             if (!string.Equals(name, distroName, StringComparison.OrdinalIgnoreCase))
+            {
                 continue;
+            }
 
             return sub.GetValue("BasePath") as string;
         }

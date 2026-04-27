@@ -1,9 +1,10 @@
+using System.Diagnostics;
+using System.Text;
+
 namespace WinAPX.Core;
 
 public sealed class WslBackend
 {
-    private readonly ProcessRunner processRunner = new();
-
     public string ExePath { get; }
 
     public WslBackend()
@@ -21,13 +22,56 @@ public sealed class WslBackend
         }
     }
 
-    public Task<int> RunAsync(
+    public async Task<int> RunAsync(
         IReadOnlyList<string> args,
         Action<string> onStdout,
         Action<string> onStderr,
         CancellationToken cancellationToken)
     {
-        return processRunner.RunAsync(ExePath, args, onStdout, onStderr, cancellationToken);
+        var processStartInfo = new ProcessStartInfo
+        {
+            FileName = ExePath,
+            UseShellExecute = false,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            CreateNoWindow = true,
+            StandardOutputEncoding = Encoding.UTF8,
+            StandardErrorEncoding = Encoding.UTF8
+        };
+
+        foreach (var arg in args)
+        {
+            processStartInfo.ArgumentList.Add(arg);
+        }
+
+        using var process = new Process
+        {
+            StartInfo = processStartInfo,
+            EnableRaisingEvents = true
+        };
+
+        process.Start();
+
+        async Task PumpAsync(StreamReader reader, Action<string> sink)
+        {
+            while (!cancellationToken.IsCancellationRequested)
+            {
+                var line = await reader.ReadLineAsync().ConfigureAwait(false);
+                if (line is null)
+                {
+                    break;
+                }
+                sink(line);
+            }
+        }
+
+        var pumpOutTask = PumpAsync(process.StandardOutput, onStdout);
+        var pumpErrTask = PumpAsync(process.StandardError, onStderr);
+
+        await process.WaitForExitAsync(cancellationToken).ConfigureAwait(false);
+        await Task.WhenAll(pumpOutTask, pumpErrTask).ConfigureAwait(false);
+
+        return process.ExitCode;
     }
 
     public async Task<(int exitCode, List<string> stdout, List<string> stderr)> RunCaptureAsync(
@@ -66,22 +110,26 @@ public sealed class WslBackend
 
     public async Task<bool> DistroExistsAsync(string distroName, CancellationToken cancellationToken)
     {
-        string name;
-        if (distroName is null)
-            name = "".Trim();
-        else
-            name = distroName.Trim();
-        if (name.Length == 0) return false;
+        var name = distroName?.Trim() ?? "";
+        if (name.Length == 0)
+        {
+            return false;
+        }
 
         var distros = await ListDistrosQuietAsync(cancellationToken);
         if (distros.Any(x => string.Equals(x, name, StringComparison.OrdinalIgnoreCase)))
+        {
             return true;
+        }
 
         var (exitCode, _, err) = await RunCaptureAsync(
             new[] { "-d", name, "--", "true" },
             cancellationToken);
 
-        if (exitCode == 0) return true;
+        if (exitCode == 0)
+        {
+            return true;
+        }
 
         var combinedErr = string.Join("\n", err);
         if (combinedErr.Contains("does not exist", StringComparison.OrdinalIgnoreCase) ||
@@ -90,7 +138,6 @@ public sealed class WslBackend
             return false;
         }
 
-        // WSL failed for some other reason
         return false;
     }
 
@@ -98,7 +145,10 @@ public sealed class WslBackend
     {
         for (var i = 0; i < tries; i++)
         {
-            if (await DistroExistsAsync(distroName, cancellationToken)) return true;
+            if (await DistroExistsAsync(distroName, cancellationToken))
+            {
+                return true;
+            }
             await Task.Delay(1000, cancellationToken);
         }
 
@@ -107,14 +157,17 @@ public sealed class WslBackend
 
         for (var i = 0; i < tries; i++)
         {
-            if (await DistroExistsAsync(distroName, cancellationToken)) return true;
+            if (await DistroExistsAsync(distroName, cancellationToken))
+            {
+                return true;
+            }
             await Task.Delay(1000, cancellationToken);
         }
 
         return false;
     }
 
-public async Task EnsureBaseTarAsync(DistroSpec distro, string tarPath, Action<string> log, CancellationToken cancellationToken)
+    public async Task EnsureBaseTarAsync(DistroSpec distro, string tarPath, Action<string> log, CancellationToken cancellationToken)
     {
         if (File.Exists(tarPath))
         {
@@ -145,5 +198,4 @@ public async Task EnsureBaseTarAsync(DistroSpec distro, string tarPath, Action<s
             throw new InvalidOperationException($"Failed to export '{sourceDistro}' base tar:\n" + combinedErr);
         }
     }
-
 }
