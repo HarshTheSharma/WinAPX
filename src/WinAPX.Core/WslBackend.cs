@@ -103,6 +103,7 @@ public sealed class WslBackend
             .Select(x => x.Replace("\0", "").Trim())
             .Where(x => x.Any(char.IsLetterOrDigit))
             .Where(x => !sourceDistros.Contains(x))
+            .Where(x => !x.StartsWith(PathUtils.TemplatePrefix, StringComparison.OrdinalIgnoreCase))
             .ToList();
 
         return names;

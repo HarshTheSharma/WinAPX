@@ -2,12 +2,6 @@ namespace WinAPX.Core.Commands;
 
 public sealed class CreateCommand : ICommand
 {
-    internal static readonly HashSet<string> ReservedNames = new(StringComparer.OrdinalIgnoreCase)
-    {
-        "list", "create", "enter", "delete", "export", "import",
-        "help", "--help", "-h", "info", "version"
-    };
-
     private readonly string envName;
     private readonly string? installLocation;
     private readonly DistroSpec distro;
@@ -35,15 +29,9 @@ public sealed class CreateCommand : ICommand
     {
         try
         {
-            if (envName.Length == 0)
-            {
-                return new CommandResult { Ok = false, Error = "error: missing env name" };
-            }
-
-            if (ReservedNames.Contains(envName))
-            {
-                return new CommandResult { Ok = false, Error = $"error: '{envName}' is a reserved command name; pick another" };
-            }
+            var nameError = PathUtils.ValidateEnvName(envName);
+            if (nameError is not null)
+                return new CommandResult { Ok = false, Error = nameError };
 
             ApxPaths.EnsureBaseDirs();
 

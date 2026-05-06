@@ -17,15 +17,9 @@ public sealed class ImportEnvCommand : ICommand
     {
         try
         {
-            if (envName.Length == 0)
-            {
-                return new CommandResult { Ok = false, Error = "error: missing env name" };
-            }
-
-            if (CreateCommand.ReservedNames.Contains(envName))
-            {
-                return new CommandResult { Ok = false, Error = $"error: '{envName}' is a reserved command name; pick another" };
-            }
+            var nameError = PathUtils.ValidateEnvName(envName);
+            if (nameError is not null)
+                return new CommandResult { Ok = false, Error = nameError };
 
             if (!File.Exists(tarPath))
             {

@@ -1,4 +1,4 @@
-using Microsoft.Win32;
+﻿using Microsoft.Win32;
 using System;
 using System.IO;
 using System.Threading;
@@ -8,6 +8,8 @@ namespace WinAPX.Core.Commands;
 
 public sealed class ListCommand : ICommand
 {
+    private const string TemplatePrefix = "WinAPX-Template-";
+
     public Task<CommandResult> ExecuteAsync(ICommandContext context, CancellationToken cancellationToken)
     {
         try
@@ -26,7 +28,8 @@ public sealed class ListCommand : ICommand
                 return Task.FromResult(new CommandResult { Ok = true });
             }
 
-            context.Emit("WSL distros (VHD path):");
+            var emittedHeader = false;
+            var emittedAny = false;
 
             foreach (var subName in subKeys)
             {
@@ -42,6 +45,19 @@ public sealed class ListCommand : ICommand
                     continue;
                 }
 
+                if (name.StartsWith(TemplatePrefix, StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                if (!emittedHeader)
+                {
+                    context.Emit("WSL distros (VHD path):");
+                    emittedHeader = true;
+                }
+
+                emittedAny = true;
+
                 var basePath = sub.GetValue("BasePath") as string;
                 if (string.IsNullOrWhiteSpace(basePath))
                 {
@@ -56,6 +72,11 @@ public sealed class ListCommand : ICommand
                     context.Emit($"{name} => {basePath}");
             }
 
+            if (!emittedAny)
+            {
+                context.Emit("No WSL distros found.");
+            }
+
             return Task.FromResult(new CommandResult { Ok = true });
         }
         catch (Exception ex)
@@ -63,4 +84,5 @@ public sealed class ListCommand : ICommand
             return Task.FromResult(new CommandResult { Ok = false, Error = ex.Message });
         }
     }
+    
 }

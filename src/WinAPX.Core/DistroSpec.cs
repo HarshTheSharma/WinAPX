@@ -11,14 +11,14 @@ public sealed record DistroSpec
     {
         Id = "ubuntu",
         DisplayName = "Ubuntu",
-        SourceWslDistro = "Ubuntu"
+        SourceWslDistro = "WinAPX-Template-Ubuntu"
     };
 
     public static readonly DistroSpec Arch = new()
     {
         Id = "arch",
         DisplayName = "Arch Linux",
-        SourceWslDistro = "archlinux"
+        SourceWslDistro = "WinAPX-Template-Arch"
     };
 
     public static readonly IReadOnlyList<DistroSpec> All = [Ubuntu, Arch];
