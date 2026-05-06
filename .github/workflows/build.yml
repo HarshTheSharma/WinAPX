@@ -9,6 +9,9 @@ on:
 jobs:
   build:
     runs-on: windows-latest
+    strategy:
+      matrix:
+        arch: [x64, arm64]
     steps:
       - uses: actions/checkout@v4
 
@@ -17,11 +20,8 @@ jobs:
         with:
           dotnet-version: '8.0.x'
 
-      - name: Restore dependencies
-        run: dotnet restore src/WinAPX.Cli/WinAPX.Cli.csproj
-
       - name: Build CLI
-        run: dotnet build src/WinAPX.Cli/WinAPX.Cli.csproj -c Release --no-restore
+        run: dotnet build src/WinAPX.Cli/WinAPX.Cli.csproj -c Release -r win-${{ matrix.arch }}
 
       - name: Build GUI
-        run: dotnet build src/WinAPX.Gui/WinAPX.Gui.csproj -c Release
+        run: dotnet build src/WinAPX.Gui/WinAPX.Gui.csproj -c Release -r win-${{ matrix.arch }}
